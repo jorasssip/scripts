@@ -18,6 +18,14 @@ bash <(curl -fsSL raw.githubusercontent.com/jorasssip/scripts/main/swapfile.sh) 
 bash <(curl -fsSL raw.githubusercontent.com/jorasssip/scripts/main/fail2ban.sh) --maxretry 2 --bantime 30d
 ```
 
+## IPv6
+
+Отключает IPv6 (настройка сохраняется после перезагрузки). Чтобы включить обратно, замените `off` на `on`:
+
+```bash
+bash <(curl -fsSL raw.githubusercontent.com/jorasssip/scripts/main/ipv6.sh) off
+```
+
 ## Автор
 
 [jorasssip](https://github.com/jorasssip). Лицензия: [MIT](LICENSE).
