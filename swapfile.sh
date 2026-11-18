@@ -18,6 +18,7 @@ DEFAULT_SIZE_MB=2048
 SYSCTL_CONF="/etc/sysctl.d/99-swapfile.conf"
 FSTAB="/etc/fstab"
 RESERVE_MB=256 # keep at least this much free disk space after creating swap
+FORCE=0
 
 # ---------- output helpers ----------
 
@@ -28,7 +29,7 @@ die()  { printf '\033[1;31m[x]\033[0m %s\n' "$*" >&2; exit 1; }
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") [options]
+Usage: swapfile.sh [options]
 
 Without options an interactive menu is shown.
 
@@ -38,12 +39,13 @@ Options:
                         Default: ${DEFAULT_SIZE_MB} MB
   --swappiness N        Also set vm.swappiness (0-200) persistently
   --disable             Disable and remove swap file
-  -h, --help            Show this help
+  --force               Skip the container check (e.g. privileged LXC)
+  -h, --help           Show this help
 
 Examples:
-  $(basename "$0") --enable --size 2048
-  $(basename "$0") --enable --size 4G --swappiness 10
-  $(basename "$0") --disable
+  swapfile.sh --enable --size 2048
+  swapfile.sh --enable --size 4G --swappiness 10
+  swapfile.sh --disable
 EOF
 }
 
@@ -61,16 +63,32 @@ require_cmds() {
     ((${#missing[@]} == 0)) || die "Missing required commands: ${missing[*]}"
 }
 
-check_not_container() {
+detect_container() {
     local virt=""
     if command -v systemd-detect-virt >/dev/null 2>&1; then
         virt=$(systemd-detect-virt --container 2>/dev/null || true)
+        [[ $virt == "none" ]] && virt=""
     fi
-    if [[ -f /proc/user_beancounters ]]; then
-        virt="openvz"
+    if [[ -z $virt ]]; then
+        if [[ -f /proc/user_beancounters ]]; then
+            virt="openvz"
+        elif [[ -f /.dockerenv ]]; then
+            virt="docker"
+        elif [[ -f /run/.containerenv ]]; then
+            virt="podman"
+        elif [[ -r /proc/1/environ ]] && tr '\0' '\n' </proc/1/environ | grep -q '^container='; then
+            virt=$(tr '\0' '\n' </proc/1/environ | sed -n 's/^container=//p' | head -n1)
+        fi
     fi
-    if [[ -n $virt && $virt != "none" ]]; then
-        die "Running inside a container ($virt): swap is managed by the host and cannot be enabled here."
+    echo "$virt"
+}
+
+check_not_container() {
+    ((FORCE == 1)) && return 0
+    local virt
+    virt=$(detect_container)
+    if [[ -n $virt ]]; then
+        die "Running inside a container ($virt): swap is usually managed by the host. Use --force to try anyway."
     fi
 }
 
@@ -154,7 +172,7 @@ trap 'exit 130' INT TERM
 
 create_with_dd() {
     local size="$1"
-    rm -f "$SWAPFILE"
+    # dd truncates an existing file in place, so attributes like btrfs +C are kept
     dd if=/dev/zero of="$SWAPFILE" bs=1M count="$size" status=progress
 }
 
@@ -164,7 +182,8 @@ fs_type() {
     findmnt -n -o FSTYPE --target "$dir" 2>/dev/null || stat -f -c %T "$dir"
 }
 
-FORMATTED=0 # set to 1 when the file is already formatted as swap
+FORMATTED=0  # set to 1 when the file is already formatted as swap
+FALLOCATED=0 # set to 1 when the file was created with fallocate
 create_swapfile() {
     local size="$1" fstype
     fstype=$(fs_type)
@@ -185,7 +204,11 @@ create_swapfile() {
             fi
             ;;
         ext4 | ext3 | ext2 | ext2/ext3 | xfs)
-            fallocate -l "${size}M" "$SWAPFILE" 2>/dev/null || create_with_dd "$size"
+            if fallocate -l "${size}M" "$SWAPFILE" 2>/dev/null; then
+                FALLOCATED=1
+            else
+                create_with_dd "$size"
+            fi
             ;;
         *)
             # fallocate'd files are not safe for swap on many filesystems — write real zeros
@@ -196,15 +219,20 @@ create_swapfile() {
 }
 
 activate_swapfile() {
-    local size="$1"
+    local size="$1" err
     ((FORMATTED == 1)) || mkswap "$SWAPFILE" >/dev/null
-    if ! swapon "$SWAPFILE" 2>/dev/null; then
-        warn "swapon failed (file may have holes), recreating with dd..."
+    err=$(swapon "$SWAPFILE" 2>&1) && return 0
+
+    # a fallocate'd file may have holes on some kernels/filesystems — retry with real zeros
+    if ((FALLOCATED == 1)) && [[ $err != *"not permitted"* ]]; then
+        warn "swapon failed: $err"
+        warn "Recreating swap file with dd..."
         create_with_dd "$size"
         chmod 600 "$SWAPFILE"
         mkswap "$SWAPFILE" >/dev/null
-        swapon "$SWAPFILE"
+        err=$(swapon "$SWAPFILE" 2>&1) && return 0
     fi
+    die "swapon failed: $err"
 }
 
 set_swappiness() {
@@ -319,6 +347,7 @@ main() {
                 shift
                 ;;
             --swappiness=*) swappiness="${1#*=}" ;;
+            --force) FORCE=1 ;;
             -h | --help)
                 usage
                 exit 0
