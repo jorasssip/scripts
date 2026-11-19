@@ -256,6 +256,7 @@ do_disable() {
 
     info "Writing $CONF"
     clean_legacy_conf
+    mkdir -p "$(dirname "$CONF")"
     cat >"$CONF" <<EOF
 # Managed by ipv6.sh (github.com/jorasssip/scripts). Run 'ipv6.sh on' to revert.
 net.ipv6.conf.all.disable_ipv6 = 1
@@ -265,7 +266,10 @@ EOF
     chmod 644 "$CONF"
 
     info "Applying..."
-    sysctl -q -p "$CONF" >/dev/null
+    # sysctl (procps) may be missing on minimal images; set_runtime writes /proc directly anyway
+    if command -v sysctl >/dev/null 2>&1; then
+        sysctl -q -p "$CONF" >/dev/null || warn "sysctl -p $CONF failed, applying via /proc."
+    fi
     set_runtime 1
 
     if [[ $(cat "$PROC6/conf/all/disable_ipv6") != "1" ]]; then
