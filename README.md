@@ -2,6 +2,22 @@
 
 Сборник скриптов для быстрой настройки Linux-серверов.
 
+## ⭐ Меню — все скрипты в одном
+
+Цветное меню со статусом сервера: выберите один скрипт или сразу несколько (`1 4 5`, `1-3`, `a` — быстрая настройка ноды: swap + IPv6 + ufw + fail2ban). Меню заранее спросит все параметры (Enter — значение по умолчанию), покажет очередь, после подтверждения выполнит в правильном порядке (swap → IPv6 → netplan → ufw → fail2ban) и выведет итог. Скрипты каждый раз скачиваются свежими, весь вывод пишется в `/var/log/jorasssip-scripts/`.
+
+```bash
+bash <(curl -fsSL raw.githubusercontent.com/jorasssip/scripts/main/menu.sh)
+```
+
+Если вы не root:
+
+```bash
+curl -fsSL raw.githubusercontent.com/jorasssip/scripts/main/menu.sh | sudo bash
+```
+
+Каждый скрипт можно запускать и отдельно — команды ниже.
+
 ## Swapfile
 
 Создаёт и включает swap-файл на 2048 МБ:
