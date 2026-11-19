@@ -42,6 +42,26 @@ bash <(curl -fsSL raw.githubusercontent.com/jorasssip/scripts/main/ufw.sh) --pan
 
 Важно: при каждом запуске все старые правила ufw сбрасываются (ufw сохраняет их копию в `/etc/ufw/*.rules.<дата>`). Docker обходит ufw: порты, опубликованные через `-p`, будут открыты всем — скрипт предупредит об этом.
 
+## Netplan primary IP
+
+Меняет основной исходящий IPv4 на Ubuntu через Netplan policy routing: с бэкапом, проверкой и автоматическим откатом через 180 секунд, если что-то пошло не так. Интерактивно предлагает два действия: 1 — установить/заменить новый основной IPv4, 2 — вернуть исходный единственный IPv4:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jorasssip/scripts/main/netplan-primary-ip.sh | sudo bash
+```
+
+Без вопросов — установить новый основной IPv4 (`NEW_IP` заменить на адрес) или откатиться к исходному:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jorasssip/scripts/main/netplan-primary-ip.sh | sudo bash -s -- 1 NEW_IP
+```
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jorasssip/scripts/main/netplan-primary-ip.sh | sudo bash -s -- 2
+```
+
+Подробности — в репозитории [netplan-primary-ip](https://github.com/jorasssip/netplan-primary-ip).
+
 ## Автор
 
 [jorasssip](https://github.com/jorasssip). Лицензия: [MIT](LICENSE).
